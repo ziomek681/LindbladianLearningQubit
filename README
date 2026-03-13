@@ -1,1 +1,2 @@
-
+This is repo with implementation of basic quantum state tomography to track density matrix evolution.
+Next step is to fit Lindbladian dynamics to measured evolution.
