@@ -1,2 +1,5 @@
 This is repo with implementation of basic quantum state tomography to track density matrix evolution.
-Next step is to fit Lindbladian dynamics to measured evolution.
+
+QSTOdra ma pełny kod do puszczania tomografii na odrze/fake backendzie, zapisu i odczytu danych
+QST_Analysis ma kod do tomografii na wczytanych danych
+Reszta plików to moje dłubanie i nie warto specjalnie się do nich przywiązywać
