@@ -1,5 +1,7 @@
-This is repo with implementation of basic quantum state tomography to track density matrix evolution.
+This is repo with implementation of basic quantum state tomography to track density matrix evolution and estimate Lindbladian paramaters using Neural Networks.
 
-QSTOdra ma pełny kod do puszczania tomografii na odrze/fake backendzie, zapisu i odczytu danych
-QST_Analysis ma kod do tomografii na wczytanych danych
-Reszta plików to moje dłubanie i nie warto specjalnie się do nich przywiązywać
+LinbladianEvolutionOld contains different numerical methods of density matrix evolution
+LindbladianEvolution_Jagoda contains codes for generating and loading density matrix evolution trajectiories created by Jagoda Zawisz
+OdraQST contains codes for quantum state tomography
+PINN contains NN learing evolution of density matrix
+ParFindMLP_Maria contains NN used to estimate Lindbladian paramaters with density matrix snapshots created by Maria Hadam
