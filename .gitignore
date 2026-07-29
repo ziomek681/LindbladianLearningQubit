@@ -1,1 +1,11 @@
-Runs*
+*.ipynb_checkpoints*
+*Runs*
+*__pycache__*
+*dataset*
+*.png
+TODO.txt
+*All_Errors.txt
+*.pt
+*.json
+*notes
+*requirements.txt
