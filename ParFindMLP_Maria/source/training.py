@@ -100,15 +100,18 @@ def train_pinn(
         checkpoint_path="best_pinn.pt",
         seed=0,
         preloaddata=True,
+        featuretimes=np.arange(0, 40*1e-12, 2*1e-12),
         device=None,
 ):
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    featuretimes.sort()
+
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    dataset = ds.TrajectoryDataset(root, preloaddata)
+    dataset = ds.TrajectoryDataset(root, preloaddata, featuretimes)
     train_ds, val_ds, test_ds = ds.split_dataset(dataset, seed=seed)
 
     print(f"dataset size: {len(dataset)}  "
@@ -189,4 +192,4 @@ def train_pinn(
             print(f"  -> new best val loss, checkpoint saved to {checkpoint_path}")
 
     pinn.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    return pinn, dataset, (train_ds, val_ds, test_ds), history
+    return pinn, dataset, (train_ds, val_ds, test_ds), history, device
