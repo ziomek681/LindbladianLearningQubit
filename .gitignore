@@ -1,7 +1,7 @@
 *.ipynb_checkpoints*
 *Runs*
 *__pycache__*
-*dataset*
+*dataset_*
 *.png
 TODO.txt
 *All_Errors.txt
