@@ -2,16 +2,16 @@ import torch
 import torch.nn as nn
 import lindblad_solver as solver
 
-
 # MLP model
 class MLP(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dims, activation='relu', use_batchnorm=False, dropout_rate=0.0, output_activation='linear'):
+    def __init__(self, input_dim, output_dim, hidden_dims, hidden_dims_type, activation='relu', use_batchnorm=False, dropout_rate=0.0, output_activation='linear'):
 
         super().__init__()              # run the parent class constructor (yeah, i'm just a physicist ...)
 
         self.input_dim = input_dim                      # input dimensionality
         self.output_dim = output_dim                    # output dimensionality
         self.hidden_dims = hidden_dims                  # list of hidden layer sizes
+        self.hidden_dims_type = hidden_dims_type        # list of hidden layer types, 0 - mlp, 1 - residual
         self.activation = activation                    # activation function to use
         self.use_batchnorm = use_batchnorm              # use batch normalization?
         self.dropout_rate = dropout_rate                # dropout rate
@@ -44,9 +44,46 @@ class MLP(nn.Module):
     def _build_model(self):
         layers = []
         layer_sizes = [self.input_dim] + list(self.hidden_dims) + [self.output_dim]
+        layer_types = [0] + list(self.hidden_dims_type) + [0]
+
+        if len(layer_types) != len(layer_sizes):
+            raise ValueError(f"Uncopatible layer_sizes and layer_types sizes")
 
         # Hidden layers: Linear -> (BatchNorm) -> Activation -> (Dropout)
         for i in range(len(layer_sizes) - 2):
+
+            if layer_types[i] == 1 and layer_types[i+1] == 1:
+                block = ResidualBlock(
+                    in_dim=layer_sizes[i],
+                    out_dim=layer_sizes[i+1],
+                    use_batchnorm=self.use_batchnorm,
+                    dropout_rate=self.dropout_rate,
+                    activation=self._make_activation(),
+                )
+
+                # inicjalizacja wag
+                for module in block.modules():
+                    if isinstance(module, nn.Linear):
+                        self._init_weights(module)
+
+                layers.append(block)
+            else:
+                block = MLPBlock(
+                    in_dim=layer_sizes[i],
+                    out_dim=layer_sizes[i + 1],
+                    use_batchnorm=self.use_batchnorm,
+                    dropout_rate=self.dropout_rate,
+                    activation=self._make_activation(),
+                )
+
+                # inicjalizacja wag
+                for module in block.modules():
+                    if isinstance(module, nn.Linear):
+                        self._init_weights(module)
+
+                layers.append(block)
+
+            '''
             linear_layer = nn.Linear(layer_sizes[i], layer_sizes[i + 1])
             self._init_weights(linear_layer)
             layers.append(linear_layer)
@@ -58,6 +95,7 @@ class MLP(nn.Module):
 
             if self.dropout_rate > 0.0:
                 layers.append(nn.Dropout(p=self.dropout_rate))
+            '''
 
         output_layer = nn.Linear(layer_sizes[-2], layer_sizes[-1])
         nn.init.xavier_uniform_(output_layer.weight)
@@ -78,11 +116,67 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+class ResidualBlock(nn.Module):
+    def __init__(self, in_dim, out_dim, use_batchnorm=False,
+                 dropout_rate=0.0, activation=None):
+        super().__init__()
+
+        if in_dim != out_dim:
+            raise ValueError(
+                f"Residual block requires in_dim == out_dim, "
+                f"got {in_dim} != {out_dim}"
+            )
+
+        layers = []
+
+        linear_layer = nn.Linear(in_dim, out_dim)
+
+        layers.append(linear_layer)
+
+        if use_batchnorm:
+            layers.append(nn.BatchNorm1d(out_dim))
+
+        if activation is not None:
+            layers.append(activation)
+
+        if dropout_rate > 0.0:
+            layers.append(nn.Dropout(p=dropout_rate))
+
+        self.block = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return x + self.block(x)
+
+class MLPBlock(nn.Module):
+    def __init__(self, in_dim, out_dim, use_batchnorm=False,
+                 dropout_rate=0.0, activation=None):
+        super().__init__()
+
+        layers = []
+
+        linear_layer = nn.Linear(in_dim, out_dim)
+
+        layers.append(linear_layer)
+
+        if use_batchnorm:
+            layers.append(nn.BatchNorm1d(out_dim))
+
+        if activation is not None:
+            layers.append(activation)
+
+        if dropout_rate > 0.0:
+            layers.append(nn.Dropout(p=dropout_rate))
+
+        self.block = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.block(x)
+
 # PINN model
 
 class PINN(nn.Module):
 
-    def __init__(self, feature_dim, H, L_ops, dt, hidden_dims, activation='relu', use_batchnorm=False, dropout_rate=0.0, output_activation='linear'):
+    def __init__(self, feature_dim, H, L_ops, dt, hidden_dims, hidden_dims_type, activation='relu', use_batchnorm=False, dropout_rate=0.0, output_activation='linear'):
         """
         :param:
             feature_dim: input dimensionality (from TrajectoryDataset.feature_dim)
@@ -97,6 +191,7 @@ class PINN(nn.Module):
             input_dim=feature_dim,
             output_dim=5,  # 5 tau parameters
             hidden_dims=hidden_dims,
+            hidden_dims_type=hidden_dims_type,
             activation=activation,
             use_batchnorm=use_batchnorm,
             dropout_rate=dropout_rate,
@@ -121,7 +216,7 @@ class PINN(nn.Module):
 
         return taus_pred_log, taus_pred, gammas_pred
 
-    def data_loss(self, taus_pred_log, labels_log):
+    def data_loss(self, taus_pred_log, taus_pred, labels_log, data_log):
         """
         MSE between predicted and ground-truth log-taus.
 
@@ -131,7 +226,12 @@ class PINN(nn.Module):
         :return:
             scalar tensor
         """
-        return torch.mean((taus_pred_log - labels_log) ** 2)
+        if data_log == True:
+            return torch.mean((taus_pred_log - labels_log) ** 2)
+        elif data_log == False:
+            labels = torch.exp(labels_log)
+            return torch.mean((taus_pred - labels) ** 2)
+
 
     def physics_loss(self, rho_t, rho_tp1, gammas_pred):
         """
@@ -158,7 +258,7 @@ class PINN(nn.Module):
 
         return torch.mean(diff.abs() ** 2)
 
-    def total_loss(self, batch, lambda_phys=1.0, lambda_data=1.0):
+    def total_loss(self, batch, lambda_phys=1.0, lambda_data=1.0, data_log=True):
         """
         Combined data + physics loss for one training batch.
 
@@ -174,7 +274,7 @@ class PINN(nn.Module):
 
         taus_pred_log, taus_pred, gammas_pred = self.forward(features)
 
-        loss_data = self.data_loss(taus_pred_log, labels_log)
+        loss_data = self.data_loss(taus_pred_log, taus_pred, labels_log, data_log)
         loss_phys = self.physics_loss(rho_t, rho_tp1, gammas_pred)
 
         #print(f"labels log: {labels_log}, pred log {taus_pred_log}")

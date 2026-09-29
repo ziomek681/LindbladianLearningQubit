@@ -47,7 +47,7 @@ def lambda_phys_schedule(epoch, warmup_epochs=10, min_lambda=0.0, max_lambda=1.0
     return min_lambda + (max_lambda - min_lambda) * min(1.0, epoch / max(1, warmup_epochs))
 
 
-def run_epoch(pinn, loader, optimizer, lambda_phys, lambda_data, device, train: bool):
+def run_epoch(pinn, loader, optimizer, lambda_phys, lambda_data, data_log, device, train: bool):
     pinn.train(train)
 
     total_loss_sum = 0.0
@@ -64,7 +64,7 @@ def run_epoch(pinn, loader, optimizer, lambda_phys, lambda_data, device, train: 
 
         with torch.set_grad_enabled(train):
             loss, loss_data, loss_phys = pinn.total_loss(
-                (features, labels, rho_t, rho_tp1), lambda_phys=lambda_phys, lambda_data=lambda_data
+                (features, labels, rho_t, rho_tp1), lambda_phys=lambda_phys, lambda_data=lambda_data, data_log=data_log,
             )
 
             if train:
@@ -95,7 +95,9 @@ def train_pinn(
         min_lambda_phys=1.0,
         max_lambda_phys=1.0,
         lambda_data=1.0,
+        data_log=True,
         hidden_dims=(256, 256, 256),
+        hidden_dims_type=(0, 0, 0),
         num_workers=4,
         checkpoint_path="best_pinn.pt",
         seed=0,
@@ -137,6 +139,7 @@ def train_pinn(
         L_ops=L_ops,
         dt=dt,
         hidden_dims=hidden_dims,
+        hidden_dims_type=hidden_dims_type,
     ).to(device)
 
     optimizer = torch.optim.Adam(pinn.parameters(), lr=lr)
@@ -157,11 +160,11 @@ def train_pinn(
 
         t0 = time.perf_counter()
         train_loss, train_data_loss, train_phys_loss = run_epoch(
-            pinn, train_loader, optimizer, lambda_phys, lambda_data, device, train=True
+            pinn, train_loader, optimizer, lambda_phys, lambda_data, data_log, device, train=True
         )
         t1 = time.perf_counter()
         val_loss, val_data_loss, val_phys_loss = run_epoch(
-            pinn, val_loader, optimizer, lambda_phys, lambda_data, device, train=False
+            pinn, val_loader, optimizer, lambda_phys, lambda_data, data_log, device, train=False
         )
         t2 = time.perf_counter()
 
