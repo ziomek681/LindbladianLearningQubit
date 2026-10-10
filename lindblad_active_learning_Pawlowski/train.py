@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Current clean training pipeline.
 
@@ -55,8 +57,8 @@ def parse_args():
     p.add_argument("--out", default="adaptive_phys_transformer_clean_results.json")
 
     p.add_argument("--epochs", type=int, default=150)
-    p.add_argument("--steps-per-epoch", type=int, default=200)
-    p.add_argument("--batch-size", type=int, default=256)
+    p.add_argument("--steps-per-epoch", type=int, default=100)
+    p.add_argument("--batch-size", type=int, default=2048)
     p.add_argument("--eval-batch", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
 
@@ -182,6 +184,7 @@ def main():
             overwrite=True,
         )
 
+    print("Loading data", flush=True)
     theta, p = load_probability_pool(args.cache)
     Fall = load_fisher_pool(args.fisher_cache)
     if len(Fall) != len(theta):
@@ -212,6 +215,7 @@ def main():
         batch_size=args.batch_size, shuffle=True, drop_last=True,
     )
 
+    print("Building model", flush=True)
     model = LindbladDecoder(n_settings).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=1e-6
@@ -221,6 +225,7 @@ def main():
     best_metric = float("inf")
     best_state = None
 
+    print("Starting training", flush=True)
     for epoch in range(1, args.epochs + 1):
         model.train()
         iterator = iter(loader)
@@ -298,7 +303,7 @@ def main():
                 f"data={total_data/args.steps_per_epoch:.5e} "
                 f"phys={total_phys/max(n_phys,1):.5e} modes={modes} | "
                 f"val@{Kcheck}: U={scores['uniform']:.4f} "
-                f"B={scores['bayes']:.4f} A={scores['adaptive']:.4f}"
+                f"B={scores['bayes']:.4f} A={scores['adaptive']:.4f}", flush=True
             )
             if metric < best_metric:
                 best_metric = metric
