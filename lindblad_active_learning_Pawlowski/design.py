@@ -116,9 +116,10 @@ def sequential_batch(model, p, target_K, theta_train, Ftrain,
 
     Both start from the same global Bayesian warmup and use accumulated Fisher.
     """
-    B, _ = p.shape
+    B, S = p.shape
     warm = min(warmup, target_K)
-    Ntot = bayes_counts[warm].to(device)[None].repeat(B, 1).clone()
+    Ntot = equal_counts(B, S, warm, device).clone()
+    #Ntot = bayes_counts[warm].to(device)[None].repeat(B, 1).clone()
     ntot = sample_counts(p, Ntot)
 
     if target_K <= warm:
