@@ -65,7 +65,7 @@ def sequential_local_aopt_weights(Fset, Nold, delta_K,
 
 
 @torch.no_grad()
-def nearest_fisher(theta_hat, theta_train, Ftrain):
+def nearest_fisher_cpu(theta_hat, theta_train, Ftrain):
     """Cached local Fisher tensor nearest to theta_hat in normalized coordinates."""
     z_hat = theta_to_z(theta_hat).cpu()
     z_train = theta_to_z(theta_train).cpu()
@@ -74,6 +74,21 @@ def nearest_fisher(theta_hat, theta_train, Ftrain):
         j = torch.argmin(((z_train - z) ** 2).sum(dim=1))
         out.append(Ftrain[j])
     return torch.stack(out)
+
+@torch.no_grad()
+def nearest_fisher(theta_hat, z_train, Ftrain):
+    """Find nearest training point using GPU vectorized distances."""
+    z_hat = theta_to_z(theta_hat)
+
+    # Squared Euclidean distances: [B, N]
+    dist2 = (
+        z_hat.square().sum(dim=1, keepdim=True)
+        + z_train.square().sum(dim=1).unsqueeze(0)
+        - 2.0 * (z_hat @ z_train.T)
+    )
+
+    idx = dist2.argmin(dim=1)
+    return Ftrain[idx]
 
 
 @torch.no_grad()
@@ -114,7 +129,8 @@ def sequential_batch(model, p, target_K, theta_train, Ftrain,
             return Ftrue.to(device)
         x = features_from_counts(ntot, Ntot, current_K, p_mean, p_std)
         theta_hat = model.theta_from_features(x)
-        return nearest_fisher(theta_hat.cpu(), theta_train, Ftrain).to(device)
+        #return nearest_fisher(theta_hat, theta_train, Ftrain).to(device)
+        return nearest_fisher_cpu(theta_hat.cpu(), theta_train, Ftrain).to(device)
 
     previous_K = warm
     checkpoints = [K for K in adaptive_Ks if warm < K <= target_K]
