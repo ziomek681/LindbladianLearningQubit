@@ -2,7 +2,7 @@
 #SBATCH --time=01:30:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=2
 #SBATCH --mem=10gb
 #SBATCH --partition lem-gpu
 #SBATCH --job-name=GPU_test
@@ -11,3 +11,5 @@
 #SBATCH --account=hpc-jarpaw-1791296019
 
 apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 50
+
+#apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 2 --steps-per-epoch 4 --n-test 32

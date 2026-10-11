@@ -119,8 +119,8 @@ def sequential_batch(model, p, target_K, theta_train, Ftrain,
     """
     B, S = p.shape
     warm = min(warmup, target_K)
-    Ntot = equal_counts(B, S, warm, device).clone()
-    #Ntot = bayes_counts[warm].to(device)[None].repeat(B, 1).clone()
+    #Ntot = equal_counts(B, S, warm, device).clone()
+    Ntot = bayes_counts[warm].to(device)[None].repeat(B, 1).clone()
     ntot = sample_counts(p, Ntot)
 
     if target_K <= warm:
