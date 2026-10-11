@@ -107,7 +107,8 @@ def static_batch(p, K, mode, bayes_counts, device):
 @torch.no_grad()
 def sequential_batch(model, p, target_K, theta_train, Ftrain,
                      bayes_counts, bayes_weights, p_mean, p_std,
-                     warmup, adaptive_Ks, epsilon, prior_precision,
+                     warmup, warmup_uniform,
+                     adaptive_Ks, epsilon, prior_precision,
                      design_iters, device, Ftrue=None):
     """
     Closed-loop experiment.
@@ -119,8 +120,10 @@ def sequential_batch(model, p, target_K, theta_train, Ftrain,
     """
     B, S = p.shape
     warm = min(warmup, target_K)
-    #Ntot = equal_counts(B, S, warm, device).clone()
-    Ntot = bayes_counts[warm].to(device)[None].repeat(B, 1).clone()
+    if warmup_uniform == True:
+        Ntot = equal_counts(B, S, warm, device).clone()
+    else:
+        Ntot = bayes_counts[warm].to(device)[None].repeat(B, 1).clone()
     ntot = sample_counts(p, Ntot)
 
     if target_K <= warm:

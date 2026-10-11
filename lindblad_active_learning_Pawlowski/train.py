@@ -54,7 +54,7 @@ def parse_args():
                    help="Finite-difference step in normalized z for Fisher cache.")
     p.add_argument("--regenerate-cache", action="store_true",
                    help="Force regeneration of probability and Fisher caches.")
-    p.add_argument("--out", default="adaptive_phys_transformer_clean_results.json")
+    p.add_argument("--out", default="Run1")
 
     p.add_argument("--epochs", type=int, default=150)
     p.add_argument("--steps-per-epoch", type=int, default=100)
@@ -67,6 +67,7 @@ def parse_args():
     p.add_argument("--adaptive-Ks", type=int, nargs="+",
                    default=list(DEFAULT_ADAPTIVE_KS))
     p.add_argument("--warmup", type=int, default=4096)
+    p.add_argument("--warmup-uniform", action="store_true")
 
     # Current successful training emphasis: 10% U, 20% B, 70% A.
     p.add_argument("--p-uniform", type=float, default=0.10)
@@ -118,7 +119,8 @@ def make_batch(mode, model, p, K, theta_train, Ftrain,
     return sequential_batch(
         model, p, K, theta_train, Ftrain,
         bayes_counts, bayes_weights, p_mean, p_std,
-        args.warmup, args.adaptive_Ks, args.epsilon,
+        args.warmup, args.warmup_uniform,
+        args.adaptive_Ks, args.epsilon,
         args.prior_precision, args.design_iters, device,
         Ftrue=Ftrue if mode == "oracle" else None,
     )
@@ -147,9 +149,91 @@ def evaluate(model, theta, p, Ftrue, K, mode, theta_train, Ftrain,
     N = torch.cat(allocations)
     return rmse_score(theta, pred), N
 
+@torch.no_grad()
+def test(epoch, FinalTest = True):
+    ntest = min(args.n_test, len(theta_val))
+    th, pp, Ft = theta_val[:ntest], p_val[:ntest], Fval[:ntest]
+    rows, fisher_rows = [], []
+
+    if FinalTest == True:
+        print("\nFINAL DECODER RMSE (lower = better)")
+        print(f"{'K':>8} {'uniform':>12} {'bayes':>12} {'adaptive':>12} {'oracle':>12}")
+
+    for K in args.Ks:
+        result = {}
+        allocation = {}
+        for mode in ("uniform", "bayes", "adaptive", "oracle"):
+            result[mode], allocation[mode] = evaluate(
+                model, th, pp, Ft, K, mode, theta_train, Ftrain,
+                bayes_counts, bayes_weights, p_mean, p_std, args, device,
+            )
+        if FinalTest == True:
+            print(
+                f"{K:8d} "
+                f"{result['uniform'][0]:12.6f} "
+                f"{result['bayes'][0]:12.6f} "
+                f"{result['adaptive'][0]:12.6f} "
+                f"{result['oracle'][0]:12.6f}"
+            )
+
+        rows.append({
+            "K": K,
+            **{m: result[m][0] for m in result},
+            **{f"{m}_rmse": [float(x) for x in result[m][1]]
+               for m in result},
+        })
+
+        fisher = {
+            mode: true_fisher_ascore(
+                Ft, allocation[mode], args.prior_precision
+            )
+            for mode in allocation
+        }
+        fisher_rows.append({
+            "K": K,
+            **{f"{m}_mean": fisher[m][0] for m in fisher},
+            **{f"{m}_median": fisher[m][1] for m in fisher},
+        })
+
+    if FinalTest == True:
+        print("\nTRUE-FISHER A-SCORE (lower = better)")
+        print(f"{'K':>8} {'uniform':>14} {'bayes':>14} {'adaptive':>14} {'oracle':>14}")
+        for r in fisher_rows:
+            print(
+                f"{r['K']:8d} {r['uniform_mean']:14.6e} "
+                f"{r['bayes_mean']:14.6e} {r['adaptive_mean']:14.6e} "
+                f"{r['oracle_mean']:14.6e}"
+            )
+
+    out_path = os.path.join("Results", args.out)
+    os.makedirs(out_path, exist_ok=True)
+
+    with open(os.path.join(out_path, "data.json"), "w") as f:
+        json.dump({
+            "rows": rows,
+            "true_fisher_rows": fisher_rows,
+            "best_val_metric": best_metric,
+            "training_mix": {
+                "uniform": args.p_uniform,
+                "bayes": args.p_bayes,
+                "adaptive": adaptive_fraction,
+            },
+            "lambda_phys": args.lambda_phys,
+            "epsilon": args.epsilon,
+            "warmup": args.warmup,
+            "epochs": epoch,
+        }, f, indent=2)
+
+    #TODO WYKRESY PRED VS TRUE
+
+    if FinalTest == True:
+        print("Saved results:", args.out)
+
 
 def main():
     args = parse_args()
+    print("args:")
+    print(vars(args))
     if args.p_uniform + args.p_bayes > 1:
         raise ValueError("p-uniform + p-bayes must be <= 1")
 
@@ -311,9 +395,24 @@ def main():
                 best_metric = metric
                 best_state = copy.deepcopy(model.state_dict())
 
+                checkpoint_path = os.path.join("Results", args.checkpoint, "checkpoint.pt")
+                os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+                torch.save({
+                    "model_state": model.state_dict(),
+                    "p_mean": p_mean.cpu(),
+                    "p_std": p_std.cpu(),
+                    "bayes_counts": bayes_counts,
+                    "args": vars(args),
+                    "best_val_metric": best_metric,
+                    "epochs": epoch,
+                }, checkpoint_path)
+                test(epoch = epoch, FinalTest = True)
+
     if best_state is not None:
         model.load_state_dict(best_state)
 
+    checkpoint_path = os.path.join("Results", args.checkpoint, "checkpoint.pt")
+    os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
     torch.save({
         "model_state": model.state_dict(),
         "p_mean": p_mean.cpu(),
@@ -321,76 +420,9 @@ def main():
         "bayes_counts": bayes_counts,
         "args": vars(args),
         "best_val_metric": best_metric,
-    }, args.checkpoint)
-    print("Saved checkpoint:", args.checkpoint)
-
-    ntest = min(args.n_test, len(theta_val))
-    th, pp, Ft = theta_val[:ntest], p_val[:ntest], Fval[:ntest]
-    rows, fisher_rows = [], []
-
-    print("\nFINAL DECODER RMSE (lower = better)")
-    print(f"{'K':>8} {'uniform':>12} {'bayes':>12} {'adaptive':>12} {'oracle':>12}")
-
-    for K in args.Ks:
-        result = {}
-        allocation = {}
-        for mode in ("uniform", "bayes", "adaptive", "oracle"):
-            result[mode], allocation[mode] = evaluate(
-                model, th, pp, Ft, K, mode, theta_train, Ftrain,
-                bayes_counts, bayes_weights, p_mean, p_std, args, device,
-            )
-
-        print(
-            f"{K:8d} "
-            f"{result['uniform'][0]:12.6f} "
-            f"{result['bayes'][0]:12.6f} "
-            f"{result['adaptive'][0]:12.6f} "
-            f"{result['oracle'][0]:12.6f}"
-        )
-
-        rows.append({
-            "K": K,
-            **{m: result[m][0] for m in result},
-            **{f"{m}_rmse": [float(x) for x in result[m][1]]
-               for m in result},
-        })
-
-        fisher = {
-            mode: true_fisher_ascore(
-                Ft, allocation[mode], args.prior_precision
-            )
-            for mode in allocation
-        }
-        fisher_rows.append({
-            "K": K,
-            **{f"{m}_mean": fisher[m][0] for m in fisher},
-            **{f"{m}_median": fisher[m][1] for m in fisher},
-        })
-
-    print("\nTRUE-FISHER A-SCORE (lower = better)")
-    print(f"{'K':>8} {'uniform':>14} {'bayes':>14} {'adaptive':>14} {'oracle':>14}")
-    for r in fisher_rows:
-        print(
-            f"{r['K']:8d} {r['uniform_mean']:14.6e} "
-            f"{r['bayes_mean']:14.6e} {r['adaptive_mean']:14.6e} "
-            f"{r['oracle_mean']:14.6e}"
-        )
-
-    with open(args.out, "w") as f:
-        json.dump({
-            "rows": rows,
-            "true_fisher_rows": fisher_rows,
-            "best_val_metric": best_metric,
-            "training_mix": {
-                "uniform": args.p_uniform,
-                "bayes": args.p_bayes,
-                "adaptive": adaptive_fraction,
-            },
-            "lambda_phys": args.lambda_phys,
-            "epsilon": args.epsilon,
-            "warmup": args.warmup,
-        }, f, indent=2)
-    print("Saved results:", args.out)
+        "epochs": args.epochs,
+    }, checkpoint_path)
+    test(epoch = args.epochs, FinalTest = True)
 
 
 if __name__ == "__main__":
