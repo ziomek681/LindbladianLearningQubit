@@ -76,9 +76,10 @@ def nearest_fisher_cpu(theta_hat, theta_train, Ftrain):
     return torch.stack(out)
 
 @torch.no_grad()
-def nearest_fisher(theta_hat, z_train, Ftrain):
+def nearest_fisher(theta_hat, theta_train, Ftrain):
     """Find nearest training point using GPU vectorized distances."""
     z_hat = theta_to_z(theta_hat)
+    z_train = theta_to_z(theta_train)
 
     # Squared Euclidean distances: [B, N]
     dist2 = (
@@ -130,8 +131,8 @@ def sequential_batch(model, p, target_K, theta_train, Ftrain,
             return Ftrue.to(device)
         x = features_from_counts(ntot, Ntot, current_K, p_mean, p_std)
         theta_hat = model.theta_from_features(x)
-        #return nearest_fisher(theta_hat, theta_train, Ftrain).to(device)
-        return nearest_fisher_cpu(theta_hat.cpu(), theta_train, Ftrain).to(device)
+        return nearest_fisher(theta_hat, theta_train, Ftrain)
+        #return nearest_fisher_cpu(theta_hat.cpu(), theta_train, Ftrain).to(device)
 
     previous_K = warm
     checkpoints = [K for K in adaptive_Ks if warm < K <= target_K]

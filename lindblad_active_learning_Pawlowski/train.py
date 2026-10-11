@@ -70,7 +70,7 @@ def parse_args():
 
     # Current successful training emphasis: 10% U, 20% B, 70% A.
     p.add_argument("--p-uniform", type=float, default=0.10)
-    p.add_argument("--p-bayes", type=float, default=0.20)
+    p.add_argument("--p-bayes", type=float, default=0.00)
 
     p.add_argument("--epsilon", type=float, default=0.20)
     p.add_argument("--bayes-samples", type=int, default=2048)
@@ -225,6 +225,8 @@ def main():
     best_metric = float("inf")
     best_state = None
 
+    theta_train = theta_train.to(device)
+    Ftrain = Ftrain.to(device)
     print("Starting training", flush=True)
     for epoch in range(1, args.epochs + 1):
         model.train()
