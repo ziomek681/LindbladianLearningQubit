@@ -22,6 +22,7 @@ Oracle is evaluation-only.
 import argparse
 import copy
 import json
+import os
 from pathlib import Path
 import torch
 import torch.nn.functional as F
@@ -45,7 +46,6 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--cache", default="lindblad_probability_pool.pt")
     p.add_argument("--fisher-cache", default="oracle_fisher_settings_pool.pt")
-    p.add_argument("--checkpoint", default="adaptive_phys_transformer_clean.pt")
     p.add_argument("--n-pool", type=int, default=20000,
                    help="Pool size used only when caches must be generated.")
     p.add_argument("--cache-batch", type=int, default=256,
@@ -70,7 +70,7 @@ def parse_args():
     p.add_argument("--warmup-uniform", action="store_true")
 
     # Current successful training emphasis: 10% U, 20% B, 70% A.
-    p.add_argument("--p-uniform", type=float, default=0.10)
+    p.add_argument("--p-uniform", type=float, default=0.00)
     p.add_argument("--p-bayes", type=float, default=0.00)
 
     p.add_argument("--epsilon", type=float, default=0.20)
@@ -150,7 +150,8 @@ def evaluate(model, theta, p, Ftrue, K, mode, theta_train, Ftrain,
     return rmse_score(theta, pred), N
 
 @torch.no_grad()
-def test(epoch, FinalTest = True):
+def test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+	 bayes_counts, bayes_weights, p_mean, p_std, args, device, FinalTest = True):
     ntest = min(args.n_test, len(theta_val))
     th, pp, Ft = theta_val[:ntest], p_val[:ntest], Fval[:ntest]
     rows, fisher_rows = [], []
@@ -373,7 +374,7 @@ def main():
 
         if epoch == 1 or epoch % 5 == 0 or epoch == args.epochs:
             ncheck = min(256, len(theta_val))
-            Kcheck = 8192
+            Kcheck = 16384
             scores = {}
             for mode in ("uniform", "bayes", "adaptive"):
                 (s, _), _ = evaluate(
@@ -392,11 +393,12 @@ def main():
                 f"B={scores['bayes']:.4f} A={scores['adaptive']:.4f}", flush=True
             )
             if metric < best_metric:
+                print("Saved model")
                 best_metric = metric
                 best_state = copy.deepcopy(model.state_dict())
 
-                checkpoint_path = os.path.join("Results", args.checkpoint, "checkpoint.pt")
-                os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+                out_path = os.path.join("Results", args.out)
+                os.makedirs(out_path, exist_ok=True)
                 torch.save({
                     "model_state": model.state_dict(),
                     "p_mean": p_mean.cpu(),
@@ -405,14 +407,16 @@ def main():
                     "args": vars(args),
                     "best_val_metric": best_metric,
                     "epochs": epoch,
-                }, checkpoint_path)
-                test(epoch = epoch, FinalTest = True)
+                }, os.path.join(out_path, "checkpoint.pt"))
+                test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, False)
+
 
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    checkpoint_path = os.path.join("Results", args.checkpoint, "checkpoint.pt")
-    os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+    out_path = os.path.join("Results", args.out)
+    os.makedirs(out_path, exist_ok=True)
     torch.save({
         "model_state": model.state_dict(),
         "p_mean": p_mean.cpu(),
@@ -421,8 +425,10 @@ def main():
         "args": vars(args),
         "best_val_metric": best_metric,
         "epochs": args.epochs,
-    }, checkpoint_path)
-    test(epoch = args.epochs, FinalTest = True)
+    }, os.path.join(out_path, "checkpoint.pt"))
+    test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, True)
+
 
 
 if __name__ == "__main__":
