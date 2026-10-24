@@ -62,6 +62,7 @@ def parse_args():
     p.add_argument("--batch-size", type=int, default=2048)
     p.add_argument("--eval-batch", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--val-metric", default="all")
 
     p.add_argument("--test-Ks", type=int, nargs="+", default=131072)
     p.add_argument("--val-Ks", type=int, nargs="+", default=16384)
@@ -145,12 +146,12 @@ def evaluate(model, theta, p, Ftrue, K, mode, theta_train, Ftrain,
             Ftrue=Ft,
         )
         x = features_from_counts(n, N, K, p_mean, p_std)
-        predictions.append(z_to_theta(model(x)).cpu())
+        predictions.append(z_to_theta(model(x)))
         allocations.append(N.cpu())
 
     pred = torch.cat(predictions)
     N = torch.cat(allocations)
-    return rmse_score(theta, pred), N
+    return rmse_score(theta.cpu(), pred.cpu()), N
 
 @torch.no_grad()
 def test(epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction,
@@ -189,7 +190,7 @@ def test(epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction
 
         fisher = {
             mode: true_fisher_ascore(
-                Ft, allocation[mode], args.prior_precision
+                Ft.cpu(), allocation[mode], args.prior_precision
             )
             for mode in allocation
         }
@@ -330,6 +331,15 @@ def main():
 
     theta_train = theta_train.to(device)
     Ftrain = Ftrain.to(device)
+    p_train = p_train.to(device)
+
+    theta_val = theta_val.to(device)
+    Fval = Fval.to(device)
+    p_val = p_val.to(device)
+
+    theta_test = theta_test.to(device)
+    Ftest = Ftest.to(device)
+    p_test = p_test.to(device)
 
     best_epoch = 0
     print("Starting training", flush=True)
@@ -404,8 +414,10 @@ def main():
                 )
                 scores[mode] = s
 
-            #metric = sum(scores.values()) / 3
-            metric = scores["adaptive"]
+            if args.val_metric == "all":
+            	metric = sum(scores.values()) / 3
+            else:
+            	metric = scores[args.val_metric]
             print(
                 f"epoch {epoch:4d} "
                 f"data={total_data/args.steps_per_epoch:.5e} "

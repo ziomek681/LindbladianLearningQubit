@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=00:02:00
+#SBATCH --time=02:10:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=2
@@ -10,6 +10,12 @@
 #SBATCH --gres=gpu:hopper:1
 #SBATCH --account=hpc-jarpaw-1791296019
 
-#apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 100 --out Run2
+#apptainer exec --nv \
+#  --bind "$HOME/python-packages:/opt/python-packages" \
+#  /lustre/software-data/container-images/pytorch_latest.sif \
+#  bash -c 'export PYTHONPATH=/opt/python-packages:$PYTHONPATH; python ./train.py --epochs 2 --steps-per-epoch 4 --n-test 32 --val-metric all'
 
-apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 2 --steps-per-epoch 4 --n-test 32
+apptainer exec --nv \
+  --bind "$HOME/python-packages:/opt/python-packages" \
+  /lustre/software-data/container-images/pytorch_latest.sif \
+  bash -c 'export PYTHONPATH=/opt/python-packages:$PYTHONPATH; python ./train.py --epochs 100 --p-bayes 1.0 --val-metric bayes --out Run4'
