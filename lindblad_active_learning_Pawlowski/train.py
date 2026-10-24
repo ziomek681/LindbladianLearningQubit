@@ -40,6 +40,7 @@ from io_utils import (
     load_probability_pool, load_fisher_pool,
     rmse_score, true_fisher_ascore,
 )
+from plotting import PlotCorelations, PlotErrorColor
 
 
 def parse_args():
@@ -62,6 +63,8 @@ def parse_args():
     p.add_argument("--eval-batch", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
 
+    p.add_argument("--test-Ks", type=int, nargs="+", default=131072)
+    p.add_argument("--val-Ks", type=int, nargs="+", default=16384)
     p.add_argument("--train-Ks", type=int, nargs="+", default=list(DEFAULT_KS))
     p.add_argument("--Ks", type=int, nargs="+", default=list(DEFAULT_KS))
     p.add_argument("--adaptive-Ks", type=int, nargs="+",
@@ -150,10 +153,10 @@ def evaluate(model, theta, p, Ftrue, K, mode, theta_train, Ftrain,
     return rmse_score(theta, pred), N
 
 @torch.no_grad()
-def test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+def test(epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction,
 	 bayes_counts, bayes_weights, p_mean, p_std, args, device, FinalTest = True):
-    ntest = min(args.n_test, len(theta_val))
-    th, pp, Ft = theta_val[:ntest], p_val[:ntest], Fval[:ntest]
+    ntest = min(args.n_test, len(theta_test))
+    th, pp, Ft = theta_test[:ntest], p_test[:ntest], Ftest[:ntest]
     rows, fisher_rows = [], []
 
     if FinalTest == True:
@@ -165,7 +168,7 @@ def test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric,
         allocation = {}
         for mode in ("uniform", "bayes", "adaptive", "oracle"):
             result[mode], allocation[mode] = evaluate(
-                model, th, pp, Ft, K, mode, theta_train, Ftrain,
+                model, th, pp, Ft, K, mode, theta_test, Ftest,
                 bayes_counts, bayes_weights, p_mean, p_std, args, device,
             )
         if FinalTest == True:
@@ -225,7 +228,19 @@ def test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric,
             "epochs": epoch,
         }, f, indent=2)
 
-    #TODO WYKRESY PRED VS TRUE
+    if FinalTest == True:
+        n, N = make_batch(
+            "adaptive", model, pp, args.test_Ks, theta_test, Ftest,
+            bayes_counts, bayes_weights, p_mean, p_std, args, device,
+            Ftrue=Ft,
+        )
+        x = features_from_counts(n, N, args.test_Ks, p_mean, p_std)
+        theta_pred = z_to_theta(model(x)).cpu()
+        PlotCorelations(0, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+        PlotCorelations(1, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+        PlotCorelations(2, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+        PlotCorelations(3, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+        PlotCorelations(4, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
 
     if FinalTest == True:
         print("Saved results:", args.out)
@@ -240,6 +255,7 @@ def main():
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cpu")
     adaptive_fraction = 1.0 - args.p_uniform - args.p_bayes
     print("device:", device)
     print("training mix U/B/A:",
@@ -280,9 +296,11 @@ def main():
     generator = torch.Generator().manual_seed(args.seed)
     perm = torch.randperm(len(theta), generator=generator)
     nval = max(1, int(0.2 * len(theta)))
-    iv, it = perm[:nval], perm[nval:]
-    theta_train, p_train, Ftrain = theta[it], p[it], Fall[it]
-    theta_val, p_val, Fval = theta[iv], p[iv], Fall[iv]
+    ntest = max(1, int(0.1 * len(theta)))
+    its, iva, itr = perm[:ntest], perm[ntest:nval+ntest], perm[nval+ntest:]
+    theta_train, p_train, Ftrain = theta[itr], p[itr], Fall[itr]
+    theta_val, p_val, Fval = theta[iva], p[iva], Fall[iva]
+    theta_test, p_test, Ftest = theta[its], p[its], Fall[its]
 
     p_mean = p_train.mean(dim=0)
     p_std = p_train.std(dim=0).clamp_min(1e-8)
@@ -375,12 +393,12 @@ def main():
             total_data += loss_data.item()
 
         if epoch == 1 or epoch % 5 == 0 or epoch == args.epochs:
-            ncheck = min(256, len(theta_val))
-            Kcheck = 16384
+            #ncheck = min(256, len(theta_val))
+            Kcheck = args.val_Ks
             scores = {}
             for mode in ("uniform", "bayes", "adaptive"):
                 (s, _), _ = evaluate(
-                    model, theta_val[:ncheck], p_val[:ncheck], Fval[:ncheck],
+                    model, theta_val, p_val, Fval,
                     Kcheck, mode, theta_train, Ftrain,
                     bayes_counts, bayes_weights, p_mean, p_std, args, device,
                 )
@@ -412,7 +430,7 @@ def main():
                     "best_val_metric": best_metric,
                     "epochs": best_epoch,
                 }, os.path.join(out_path, "checkpoint.pt"))
-                test(best_epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+                test(best_epoch, theta_val, p_val, Fval, model, best_metric, adaptive_fraction,
 	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, False)
 
 
@@ -430,7 +448,7 @@ def main():
         "best_val_metric": best_metric,
         "epochs": best_epoch,
     }, os.path.join(out_path, "checkpoint.pt"))
-    test(best_epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+    test(best_epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction,
 	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, True)
 
 
