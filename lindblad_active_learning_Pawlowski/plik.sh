@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=02:00:00
+#SBATCH --time=00:02:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=2
@@ -10,6 +10,6 @@
 #SBATCH --gres=gpu:hopper:1
 #SBATCH --account=hpc-jarpaw-1791296019
 
-apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 100 --out Run1
+#apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 100 --out Run2
 
-#apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 2 --steps-per-epoch 4 --n-test 32
+apptainer exec --nv /lustre/software-data/container-images/pytorch_latest.sif ./train.py  --epochs 2 --steps-per-epoch 4 --n-test 32

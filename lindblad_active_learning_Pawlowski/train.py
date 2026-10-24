@@ -54,7 +54,7 @@ def parse_args():
                    help="Finite-difference step in normalized z for Fisher cache.")
     p.add_argument("--regenerate-cache", action="store_true",
                    help="Force regeneration of probability and Fisher caches.")
-    p.add_argument("--out", default="Run1")
+    p.add_argument("--out", default="Run0")
 
     p.add_argument("--epochs", type=int, default=150)
     p.add_argument("--steps-per-epoch", type=int, default=100)
@@ -312,6 +312,8 @@ def main():
 
     theta_train = theta_train.to(device)
     Ftrain = Ftrain.to(device)
+
+    best_epoch = 0
     print("Starting training", flush=True)
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -384,7 +386,8 @@ def main():
                 )
                 scores[mode] = s
 
-            metric = sum(scores.values()) / 3
+            #metric = sum(scores.values()) / 3
+            metric = scores["adaptive"]
             print(
                 f"epoch {epoch:4d} "
                 f"data={total_data/args.steps_per_epoch:.5e} "
@@ -393,7 +396,8 @@ def main():
                 f"B={scores['bayes']:.4f} A={scores['adaptive']:.4f}", flush=True
             )
             if metric < best_metric:
-                print("Saved model")
+                print("Saved model", flush=True)
+                best_epoch = epoch
                 best_metric = metric
                 best_state = copy.deepcopy(model.state_dict())
 
@@ -406,9 +410,9 @@ def main():
                     "bayes_counts": bayes_counts,
                     "args": vars(args),
                     "best_val_metric": best_metric,
-                    "epochs": epoch,
+                    "epochs": best_epoch,
                 }, os.path.join(out_path, "checkpoint.pt"))
-                test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+                test(best_epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
 	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, False)
 
 
@@ -424,9 +428,9 @@ def main():
         "bayes_counts": bayes_counts,
         "args": vars(args),
         "best_val_metric": best_metric,
-        "epochs": args.epochs,
+        "epochs": best_epoch,
     }, os.path.join(out_path, "checkpoint.pt"))
-    test(epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
+    test(best_epoch, theta_val, p_val, Fval, theta_train, Ftrain, model, best_metric, adaptive_fraction,
 	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, True)
 
 
