@@ -25,6 +25,7 @@ def PlotCorelations(col, savepath, labels_true, labels_pred):
     max_val = np.sort(vals)[int(len(vals)*9/10)-1]
     min_val = np.sort(vals)[0]
 
+    plt.figure()
 
     plt.scatter(labels_true[:, col], labels_pred[:, col], color='blue', alpha=0.6)
     plt.plot([min(labels_true[:, col]), max(labels_true[:, col])], [min(labels_true[:, col]), max(labels_true[:, col])], '--', color='green')

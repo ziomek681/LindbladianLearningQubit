@@ -56,6 +56,8 @@ def parse_args():
     p.add_argument("--regenerate-cache", action="store_true",
                    help="Force regeneration of probability and Fisher caches.")
     p.add_argument("--out", default="Run0")
+    p.add_argument("--use-train-args", action="store_true")
+
 
     p.add_argument("--epochs", type=int, default=150)
     p.add_argument("--steps-per-epoch", type=int, default=100)
