@@ -65,6 +65,7 @@ def parse_args():
     p.add_argument("--eval-batch", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--val-metric", default="all")
+    p.add_argument("--test-mode", default="adaptive")
 
     p.add_argument("--test-Ks", type=int, nargs="+", default=131072)
     p.add_argument("--val-Ks", type=int, nargs="+", default=16384)
@@ -157,7 +158,7 @@ def evaluate(model, theta, p, Ftrue, K, mode, theta_train, Ftrain,
 
 @torch.no_grad()
 def test(epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction,
-	 bayes_counts, bayes_weights, p_mean, p_std, args, device, FinalTest = True):
+	 bayes_counts, bayes_weights, p_mean, p_std, args, device, test_mode, FinalTest = True):
     ntest = min(args.n_test, len(theta_test))
     th, pp, Ft = theta_test[:ntest], p_test[:ntest], Ftest[:ntest]
     rows, fisher_rows = [], []
@@ -233,7 +234,7 @@ def test(epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction
 
     if FinalTest == True:
         n, N = make_batch(
-            "adaptive", model, pp, args.test_Ks, theta_test, Ftest,
+            test_mode, model, pp, args.test_Ks, theta_test, Ftest,
             bayes_counts, bayes_weights, p_mean, p_std, args, device,
             Ftrue=Ft,
         )
@@ -255,6 +256,9 @@ def main():
     print(vars(args))
     if args.p_uniform + args.p_bayes > 1:
         raise ValueError("p-uniform + p-bayes must be <= 1")
+
+    if args.test_mode not in {"uniform", "bayes", "adaptive", "oracle"}:
+        raise ValueError("test_mode must be uniform, bayes, adaptive, oracle")
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -445,7 +449,7 @@ def main():
                     "epochs": best_epoch,
                 }, os.path.join(out_path, "checkpoint.pt"))
                 test(best_epoch, theta_val, p_val, Fval, model, best_metric, adaptive_fraction,
-	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, False)
+	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, args.test_mode, False)
 
 
     if best_state is not None:
@@ -463,7 +467,7 @@ def main():
         "epochs": best_epoch,
     }, os.path.join(out_path, "checkpoint.pt"))
     test(best_epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction,
-	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, True)
+	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, args.test_mode, True)
 
 
 

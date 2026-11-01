@@ -39,13 +39,25 @@ def main():
         weights_only=False,
     )
 
-    if args.use_train_args == True:
-        args = checkpoint["args"]
+    if args.use_train_args:
+        for key, value in vars(checkpoint["args"]).items():
+            setattr(args, key, value)
 
-    args = Namespace(**args)
+    if isinstance(args, dict):
+        args = Namespace(**args)
+    elif not isinstance(args, Namespace):
+        args = Namespace(**vars(args))
 
-    # args.test_Ks = 131072
 
+    if hasattr(args, 'test_Ks') == False:
+        print("No test_Ks in args, initializing as 131072")
+        args.test_Ks = 131072
+    if hasattr(args, 'test_mode') == False:
+        print("No test_mode in args, initializing as adaptive")
+        args.test_mode = "adaptive"
+
+    if args.test_mode not in {"uniform", "bayes", "adaptive", "oracle"}:
+        raise ValueError("test_mode must be uniform, bayes, adaptive, oracle")
         
     print("args:")
     print(vars(args))
