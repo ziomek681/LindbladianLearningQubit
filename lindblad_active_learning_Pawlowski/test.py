@@ -44,6 +44,8 @@ def main():
 
     args = Namespace(**args)
 
+    # args.test_Ks = 131072
+
         
     print("args:")
     print(vars(args))
