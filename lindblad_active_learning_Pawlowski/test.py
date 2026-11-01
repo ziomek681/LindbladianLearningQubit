@@ -39,8 +39,12 @@ def main():
         weights_only=False,
     )
 
-    if args.use_train_args:
-        for key, value in vars(checkpoint["args"]).items():
+    if args.use_train_args == True:
+        train_args = checkpoint["args"]
+
+        train_args = train_args.items()
+    
+        for key, value in train_args:
             setattr(args, key, value)
 
     if isinstance(args, dict):
