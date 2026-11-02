@@ -65,7 +65,6 @@ def parse_args():
     p.add_argument("--eval-batch", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--val-metric", default="all")
-    p.add_argument("--test-mode", default="adaptive")
 
     p.add_argument("--test-Ks", type=int, default=131072)
     p.add_argument("--val-Ks", type=int, default=16384)
@@ -158,7 +157,7 @@ def evaluate(model, theta, p, Ftrue, K, mode, theta_train, Ftrain,
 
 @torch.no_grad()
 def test(epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction,
-	 bayes_counts, bayes_weights, p_mean, p_std, args, device, test_mode, FinalTest = True):
+	 bayes_counts, bayes_weights, p_mean, p_std, args, device, FinalTest = True):
     ntest = min(args.n_test, len(theta_test))
     th, pp, Ft = theta_test[:ntest], p_test[:ntest], Ftest[:ntest]
     rows, fisher_rows = [], []
@@ -233,18 +232,23 @@ def test(epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction
         }, f, indent=2)
 
     if FinalTest == True:
-        n, N = make_batch(
-            test_mode, model, pp, args.test_Ks, theta_test, Ftest,
-            bayes_counts, bayes_weights, p_mean, p_std, args, device,
-            Ftrue=Ft,
-        )
-        x = features_from_counts(n, N, args.test_Ks, p_mean, p_std)
-        theta_pred = z_to_theta(model(x)).cpu()
-        PlotCorelations(0, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
-        PlotCorelations(1, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
-        PlotCorelations(2, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
-        PlotCorelations(3, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
-        PlotCorelations(4, out_path, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+        for mode in ("uniform", "bayes", "adaptive", "oracle"):
+            n, N = make_batch(
+                mode, model, pp, args.test_Ks, theta_test, Ftest,
+                bayes_counts, bayes_weights, p_mean, p_std, args, device,
+                Ftrue=Ft,
+            )
+            x = features_from_counts(n, N, args.test_Ks, p_mean, p_std)
+            theta_pred = z_to_theta(model(x)).cpu()
+
+            out_subpath = os.path.join(out_path, mode)
+            os.makedirs(out_subpath, exist_ok=True)
+
+            PlotCorelations(0, out_subpath, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+            PlotCorelations(1, out_subpath, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+            PlotCorelations(2, out_subpath, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+            PlotCorelations(3, out_subpath, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
+            PlotCorelations(4, out_subpath, th.detach().cpu().numpy(), theta_pred.detach().cpu().numpy())
 
     if FinalTest == True:
         print("Saved results:", args.out)
@@ -256,9 +260,6 @@ def main():
     print(vars(args))
     if args.p_uniform + args.p_bayes > 1:
         raise ValueError("p-uniform + p-bayes must be <= 1")
-
-    if args.test_mode not in {"uniform", "bayes", "adaptive", "oracle"}:
-        raise ValueError("test_mode must be uniform, bayes, adaptive, oracle")
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -449,7 +450,7 @@ def main():
                     "epochs": best_epoch,
                 }, os.path.join(out_path, "checkpoint.pt"))
                 test(best_epoch, theta_val, p_val, Fval, model, best_metric, adaptive_fraction,
-	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, args.test_mode, False)
+	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, False)
 
 
     if best_state is not None:
@@ -467,7 +468,7 @@ def main():
         "epochs": best_epoch,
     }, os.path.join(out_path, "checkpoint.pt"))
     test(best_epoch, theta_test, p_test, Ftest, model, best_metric, adaptive_fraction,
-	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, args.test_mode, True)
+	 		bayes_counts, bayes_weights, p_mean, p_std, args, device, True)
 
 
 
