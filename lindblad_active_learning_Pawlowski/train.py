@@ -67,8 +67,8 @@ def parse_args():
     p.add_argument("--val-metric", default="all")
     p.add_argument("--test-mode", default="adaptive")
 
-    p.add_argument("--test-Ks", type=int, nargs="+", default=131072)
-    p.add_argument("--val-Ks", type=int, nargs="+", default=16384)
+    p.add_argument("--test-Ks", type=int, default=131072)
+    p.add_argument("--val-Ks", type=int, default=16384)
     p.add_argument("--train-Ks", type=int, nargs="+", default=list(DEFAULT_KS))
     p.add_argument("--Ks", type=int, nargs="+", default=list(DEFAULT_KS))
     p.add_argument("--adaptive-Ks", type=int, nargs="+",

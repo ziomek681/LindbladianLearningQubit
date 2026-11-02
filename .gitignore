@@ -13,3 +13,5 @@ TODO.txt
 *pytania.txt
 *.out
 *.sh
+*log*
+*Results*
